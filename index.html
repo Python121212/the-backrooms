@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js Backrooms Denser Walls</title>
+    <title>Three.js Backrooms Many Lights</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -31,16 +31,16 @@
 
     <script>
         // --- 設定 ---
-        const mapSize = 60;     // 空間を少し広く
-        const cellSize = 5;     // マス目を元のサイズに戻して圧迫感を出す
-        const wallHeight = 3.2; // 天井を少し低くして圧迫感を出す
-        const playerSpeed = 5.0; // 移動速度を少し落とす
-        const wallProbability = 0.30; // 壁ができる確率を30%に大幅引き上げ
+        const mapSize = 60;     
+        const cellSize = 5;     
+        const wallHeight = 3.2; 
+        const playerSpeed = 5.0; 
+        const wallProbability = 0.30; 
+        const lightProbability = 0.25; // 蛍光灯の確率を大幅アップ (25%)
 
         // --- 1. 基本セットアップ ---
         const scene = new THREE.Scene();
-        // 霧の色を濃く、距離を短くして、先が見えない恐怖を演出
-        scene.fog = new THREE.FogExp2(0x887744, 0.15); 
+        scene.fog = new THREE.FogExp2(0x887744, 0.12); 
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
         
@@ -57,7 +57,6 @@
         controls.addEventListener('unlock', () => instructions.style.display = 'flex');
         scene.add(controls.getObject());
 
-        // プレイヤーの初期位置設定（地面 y=0 から 1.6m の高さ）
         const startX = Math.floor(mapSize / 2);
         const startZ = Math.floor(mapSize / 2);
         controls.getObject().position.set(startX * cellSize, 1.6, startZ * cellSize);
@@ -81,10 +80,10 @@
             return texture;
         }
 
-        const wallTex = createBackroomsTexture('#ddd088', 20); // 壁を少し白っぽく
+        const wallTex = createBackroomsTexture('#ddd088', 20);
         const wallMaterial = new THREE.MeshLambertMaterial({ map: wallTex });
         const floorTex = createBackroomsTexture('#7d6b41', 35);
-        floorTex.repeat.set(mapSize, mapSize); // テクスチャのリピート数を調整
+        floorTex.repeat.set(mapSize, mapSize);
         const floorMaterial = new THREE.MeshLambertMaterial({ map: floorTex });
         const ceilingTex = createBackroomsTexture('#ffffff', 10);
         ceilingTex.repeat.set(mapSize, mapSize);
@@ -95,43 +94,44 @@
         const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
         const totalWorldSize = mapSize * cellSize;
 
-        // 床 (y=0) 中心をワールドの中央に
+        // 床
         const floorGeo = new THREE.PlaneGeometry(totalWorldSize, totalWorldSize);
         const floor = new THREE.Mesh(floorGeo, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(totalWorldSize/2 - cellSize/2, 0, totalWorldSize/2 - cellSize/2);
         scene.add(floor);
 
-        // 天井 (y=wallHeight)
+        // 天井
         const ceiling = new THREE.Mesh(floorGeo, ceilingMaterial);
         ceiling.rotation.x = Math.PI / 2;
         ceiling.position.set(totalWorldSize/2 - cellSize/2, wallHeight, totalWorldSize/2 - cellSize/2);
         scene.add(ceiling);
 
-        // 壁と照明のランダム配置
+        // 壁と大量の照明の配置
         for (let y = 0; y < mapSize; y++) {
             for (let x = 0; x < mapSize; x++) {
-                // 外周の壁
                 const isEdge = (x === 0 || x === mapSize - 1 || y === 0 || y === mapSize - 1);
-                
-                // スタート地点（中央）付近（5x5マス）は壁を作らない
                 const distToStart = Math.max(Math.abs(x - startX), Math.abs(y - startZ));
                 const isStartArea = (distToStart < 3);
 
                 if (isEdge || (Math.random() < wallProbability && !isStartArea)) {
                     const wall = new THREE.Mesh(wallGeometry, wallMaterial);
-                    // 壁の底を地面(y=0)に合わせるため、中心を wallHeight/2 に設定
                     wall.position.set(x * cellSize, wallHeight / 2, y * cellSize);
                     scene.add(wall);
                     walls.push(wall);
                 } else {
-                    // 照明の設置確率も少し上げる
-                    if (Math.random() < 0.08) {
-                        const light = new THREE.PointLight(0xffffcc, 0.7, cellSize * 4);
+                    // 照明の設置
+                    if (Math.random() < lightProbability) {
+                        // PointLightの強度を0.5に下げて白飛びを防止
+                        const light = new THREE.PointLight(0xffffcc, 0.5, cellSize * 6);
                         light.position.set(x * cellSize, wallHeight - 0.2, y * cellSize);
                         scene.add(light);
                         
-                        const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.5), new THREE.MeshBasicMaterial({color: 0xffffcc}));
+                        // 蛍光灯モデル
+                        const lamp = new THREE.Mesh(
+                            new THREE.BoxGeometry(2.0, 0.05, 0.6), 
+                            new THREE.MeshBasicMaterial({color: 0xffffee})
+                        );
                         lamp.position.copy(light.position);
                         scene.add(lamp);
                     }
@@ -139,7 +139,7 @@
             }
         }
 
-        scene.add(new THREE.AmbientLight(0x444444)); // 基礎となる暗い明かり
+        scene.add(new THREE.AmbientLight(0x222222)); // 環境光を下げて、蛍光灯の存在感を出す
 
         // --- 5. アニメーションと衝突判定 ---
         const keys = { W: false, A: false, S: false, D: false };
@@ -173,14 +173,11 @@
                 if (direction.length() > 0) {
                     direction.normalize();
                     
-                    // 衝突判定：プレイヤーの現在位置から移動方向にレイを飛ばす
-                    // 狭い場所を通れるように、判定高さを調整
                     const checkOrigin = playerPos.clone();
                     checkOrigin.y = 1.0; 
                     raycaster.set(checkOrigin, direction);
                     const intersections = raycaster.intersectObjects(walls);
                     
-                    // 壁との判定距離を少し短く (1.0 -> 0.8) して狭い通路を通りやすく
                     let canMove = true;
                     if (intersections.length > 0 && intersections[0].distance < 0.8) {
                         canMove = false;
@@ -192,7 +189,6 @@
                     }
                 }
                 
-                // y座標（高さ）を強制固定（埋まり防止）
                 playerPos.y = 1.6;
             }
             renderer.render(scene, camera);
