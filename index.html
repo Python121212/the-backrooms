@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js Backrooms Open Space</title>
+    <title>Three.js Backrooms Fixed View</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -31,32 +31,33 @@
 
     <script>
         // --- 設定 ---
-        const mapSize = 50;     // 空間の広さ（大きくするとより広大に）
-        const cellSize = 5;     // 1マスのサイズ（少し大きくして開放感を出す）
-        const wallHeight = 3.5; // 天井を少し高く設定
+        const mapSize = 50;     
+        const cellSize = 6;     // 1マスのサイズ
+        const wallHeight = 3.5; 
         const playerSpeed = 6.0;
-        const wallProbability = 0.12; // 壁ができる確率 (0.12 = 12%)
+        const wallProbability = 0.12; 
 
         // --- 1. 基本セットアップ ---
         const scene = new THREE.Scene();
-        // 霧（Fog）の色を少し不気味な黄土色に
-        scene.fog = new THREE.FogExp2(0x998855, 0.12);
+        scene.fog = new THREE.FogExp2(0x998855, 0.1);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
-        camera.position.y = 1.7;
-
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+        
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // --- 2. マウス操作 ---
+        // --- 2. 操作系 ---
         const controls = new THREE.PointerLockControls(camera, document.body);
         const instructions = document.getElementById('instructions');
         instructions.addEventListener('click', () => controls.lock());
         controls.addEventListener('lock', () => instructions.style.display = 'none');
         controls.addEventListener('unlock', () => instructions.style.display = 'flex');
         scene.add(controls.getObject());
+
+        // プレイヤーの初期位置設定（地面 y=0 から 1.7m の高さに目を置く）
+        controls.getObject().position.set(mapSize/2 * cellSize, 1.7, mapSize/2 * cellSize);
 
         // --- 3. マテリアル生成 ---
         function createBackroomsTexture(color, noiseOp) {
@@ -86,45 +87,43 @@
         ceilingTex.repeat.set(100, 100);
         const ceilingMaterial = new THREE.MeshLambertMaterial({ map: ceilingTex });
 
-        // --- 4. 空間生成ロジック ---
+        // --- 4. 構築 ---
         const walls = [];
         const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
         const totalWorldSize = mapSize * cellSize;
 
-        // 床と天井を配置
+        // 床 (y=0)
         const floorGeo = new THREE.PlaneGeometry(totalWorldSize, totalWorldSize);
         const floor = new THREE.Mesh(floorGeo, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(totalWorldSize/2, 0, totalWorldSize/2);
         scene.add(floor);
 
+        // 天井 (y=wallHeight)
         const ceiling = new THREE.Mesh(floorGeo, ceilingMaterial);
         ceiling.rotation.x = Math.PI / 2;
         ceiling.position.set(totalWorldSize/2, wallHeight, totalWorldSize/2);
         scene.add(ceiling);
 
-        // 確率ベースで壁と照明を配置
+        // 壁と照明のランダム配置
         for (let y = 0; y < mapSize; y++) {
             for (let x = 0; x < mapSize; x++) {
-                // 外周の壁
                 const isEdge = (x === 0 || x === mapSize - 1 || y === 0 || y === mapSize - 1);
-                
-                // スタート地点（中央）付近は壁を作らない
-                const isStartArea = (Math.abs(x - mapSize/2) < 2 && Math.abs(y - mapSize/2) < 2);
+                const isStartArea = (Math.abs(x - mapSize/2) < 3 && Math.abs(y - mapSize/2) < 3);
 
                 if (isEdge || (Math.random() < wallProbability && !isStartArea)) {
                     const wall = new THREE.Mesh(wallGeometry, wallMaterial);
+                    // 壁の底を地面(y=0)に合わせるため、中心を wallHeight/2 に設定
                     wall.position.set(x * cellSize, wallHeight / 2, y * cellSize);
                     scene.add(wall);
                     walls.push(wall);
                 } else {
-                    // 通路に稀に蛍光灯を設置
-                    if (Math.random() < 0.08) {
-                        const light = new THREE.PointLight(0xffffcc, 0.7, cellSize * 4);
+                    if (Math.random() < 0.05) {
+                        const light = new THREE.PointLight(0xffffcc, 0.6, cellSize * 5);
                         light.position.set(x * cellSize, wallHeight - 0.2, y * cellSize);
                         scene.add(light);
                         
-                        const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.4), new THREE.MeshBasicMaterial({color: 0xffffcc}));
+                        const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.05, 0.5), new THREE.MeshBasicMaterial({color: 0xffffcc}));
                         lamp.position.copy(light.position);
                         scene.add(lamp);
                     }
@@ -132,16 +131,14 @@
             }
         }
 
-        // プレイヤーを中央に配置
-        controls.getObject().position.set(mapSize/2 * cellSize, 0, mapSize/2 * cellSize);
-        scene.add(new THREE.AmbientLight(0x333333)); // 基礎となる暗い明かり
+        scene.add(new THREE.AmbientLight(0x444444));
 
-        // --- 5. 移動と衝突判定 ---
+        // --- 5. アニメーションと衝突判定 ---
         const keys = { W: false, A: false, S: false, D: false };
         document.addEventListener('keydown', (e) => keys[e.key.toUpperCase()] = true);
         document.addEventListener('keyup', (e) => keys[e.key.toUpperCase()] = false);
 
-        const raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(), 0, 1.2);
+        const raycaster = new THREE.Raycaster();
         const clock = new THREE.Clock();
 
         function animate() {
@@ -150,6 +147,8 @@
             if (controls.isLocked) {
                 const delta = clock.getDelta();
                 const moveDist = playerSpeed * delta;
+                
+                const playerPos = controls.getObject().position;
                 const direction = new THREE.Vector3();
                 const front = new THREE.Vector3();
                 const side = new THREE.Vector3();
@@ -166,22 +165,24 @@
                 if (direction.length() > 0) {
                     direction.normalize();
                     
-                    // 衝突判定
-                    let collision = false;
-                    const checkOrigin = controls.getObject().position.clone();
-                    checkOrigin.y = 1.0; 
-                    raycaster.set(checkOrigin, direction);
+                    // 衝突判定：プレイヤーの現在位置から移動方向にレイを飛ばす
+                    raycaster.set(playerPos, direction);
+                    const intersections = raycaster.intersectObjects(walls);
                     
-                    const hits = raycaster.intersectObjects(walls);
-                    if (hits.length > 0 && hits[0].distance < 1.0) {
-                        collision = true;
+                    // 壁との距離が一定以下なら移動を制限
+                    let canMove = true;
+                    if (intersections.length > 0 && intersections[0].distance < 1.0) {
+                        canMove = false;
                     }
 
-                    if (!collision) {
+                    if (canMove) {
                         controls.moveRight(direction.dot(side) * moveDist);
                         controls.moveForward(direction.dot(front) * moveDist);
                     }
                 }
+                
+                // y座標（高さ）がズレないように強制固定（埋まり防止）
+                playerPos.y = 1.7;
             }
             renderer.render(scene, camera);
         }
