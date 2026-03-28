@@ -2,26 +2,30 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>The Backrooms - Portal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Infinite Backrooms Project</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- Three.jsの描画領域 -->
+    <!-- 3D描画ターゲット -->
     <canvas id="canvas"></canvas>
 
-    <!-- UIオーバーレイ -->
+    <!-- 操作ガイド・スタート画面 -->
     <div id="ui">
-        <h1 class="title">THE BACKROOMS</h1>
-        <p class="subtitle">If you're not careful and you noclip out of reality...</p>
-        
-        <div class="menu">
-            <button class="menu-btn" onclick="startGame()">ENTER THE VOID</button>
-            <button class="menu-btn">SETTINGS</button>
-            <button class="menu-btn">ARCHIVES</button>
+        <div class="container">
+            <h1>THE BACKROOMS</h1>
+            <p class="warning">CAUTION: NOCLIPPING DETECTED</p>
+            <div class="controls-guide">
+                <p>WASD : 移動</p>
+                <p>MOUSE : 視点変更</p>
+            </div>
+            <button id="start-btn">ENTER THE VOID</button>
+            <p id="status-msg">座標データをスキャン中...</p>
         </div>
     </div>
 
+    <!-- Three.js 本体と、FPS操作用コントロールの読み込み -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"></script>
-    <script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>
