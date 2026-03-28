@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js Backrooms Fixed View</title>
+    <title>Three.js Backrooms Denser Walls</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -31,17 +31,18 @@
 
     <script>
         // --- 設定 ---
-        const mapSize = 50;     
-        const cellSize = 6;     // 1マスのサイズ
-        const wallHeight = 3.5; 
-        const playerSpeed = 6.0;
-        const wallProbability = 0.12; 
+        const mapSize = 60;     // 空間を少し広く
+        const cellSize = 5;     // マス目を元のサイズに戻して圧迫感を出す
+        const wallHeight = 3.2; // 天井を少し低くして圧迫感を出す
+        const playerSpeed = 5.0; // 移動速度を少し落とす
+        const wallProbability = 0.30; // 壁ができる確率を30%に大幅引き上げ
 
         // --- 1. 基本セットアップ ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x998855, 0.1);
+        // 霧の色を濃く、距離を短くして、先が見えない恐怖を演出
+        scene.fog = new THREE.FogExp2(0x887744, 0.15); 
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -56,8 +57,10 @@
         controls.addEventListener('unlock', () => instructions.style.display = 'flex');
         scene.add(controls.getObject());
 
-        // プレイヤーの初期位置設定（地面 y=0 から 1.7m の高さに目を置く）
-        controls.getObject().position.set(mapSize/2 * cellSize, 1.7, mapSize/2 * cellSize);
+        // プレイヤーの初期位置設定（地面 y=0 から 1.6m の高さ）
+        const startX = Math.floor(mapSize / 2);
+        const startZ = Math.floor(mapSize / 2);
+        controls.getObject().position.set(startX * cellSize, 1.6, startZ * cellSize);
 
         // --- 3. マテリアル生成 ---
         function createBackroomsTexture(color, noiseOp) {
@@ -78,13 +81,13 @@
             return texture;
         }
 
-        const wallTex = createBackroomsTexture('#d9ca77', 25);
+        const wallTex = createBackroomsTexture('#ddd088', 20); // 壁を少し白っぽく
         const wallMaterial = new THREE.MeshLambertMaterial({ map: wallTex });
         const floorTex = createBackroomsTexture('#7d6b41', 35);
-        floorTex.repeat.set(100, 100);
+        floorTex.repeat.set(mapSize, mapSize); // テクスチャのリピート数を調整
         const floorMaterial = new THREE.MeshLambertMaterial({ map: floorTex });
         const ceilingTex = createBackroomsTexture('#ffffff', 10);
-        ceilingTex.repeat.set(100, 100);
+        ceilingTex.repeat.set(mapSize, mapSize);
         const ceilingMaterial = new THREE.MeshLambertMaterial({ map: ceilingTex });
 
         // --- 4. 構築 ---
@@ -92,24 +95,28 @@
         const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
         const totalWorldSize = mapSize * cellSize;
 
-        // 床 (y=0)
+        // 床 (y=0) 中心をワールドの中央に
         const floorGeo = new THREE.PlaneGeometry(totalWorldSize, totalWorldSize);
         const floor = new THREE.Mesh(floorGeo, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(totalWorldSize/2, 0, totalWorldSize/2);
+        floor.position.set(totalWorldSize/2 - cellSize/2, 0, totalWorldSize/2 - cellSize/2);
         scene.add(floor);
 
         // 天井 (y=wallHeight)
         const ceiling = new THREE.Mesh(floorGeo, ceilingMaterial);
         ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.set(totalWorldSize/2, wallHeight, totalWorldSize/2);
+        ceiling.position.set(totalWorldSize/2 - cellSize/2, wallHeight, totalWorldSize/2 - cellSize/2);
         scene.add(ceiling);
 
         // 壁と照明のランダム配置
         for (let y = 0; y < mapSize; y++) {
             for (let x = 0; x < mapSize; x++) {
+                // 外周の壁
                 const isEdge = (x === 0 || x === mapSize - 1 || y === 0 || y === mapSize - 1);
-                const isStartArea = (Math.abs(x - mapSize/2) < 3 && Math.abs(y - mapSize/2) < 3);
+                
+                // スタート地点（中央）付近（5x5マス）は壁を作らない
+                const distToStart = Math.max(Math.abs(x - startX), Math.abs(y - startZ));
+                const isStartArea = (distToStart < 3);
 
                 if (isEdge || (Math.random() < wallProbability && !isStartArea)) {
                     const wall = new THREE.Mesh(wallGeometry, wallMaterial);
@@ -118,8 +125,9 @@
                     scene.add(wall);
                     walls.push(wall);
                 } else {
-                    if (Math.random() < 0.05) {
-                        const light = new THREE.PointLight(0xffffcc, 0.6, cellSize * 5);
+                    // 照明の設置確率も少し上げる
+                    if (Math.random() < 0.08) {
+                        const light = new THREE.PointLight(0xffffcc, 0.7, cellSize * 4);
                         light.position.set(x * cellSize, wallHeight - 0.2, y * cellSize);
                         scene.add(light);
                         
@@ -131,7 +139,7 @@
             }
         }
 
-        scene.add(new THREE.AmbientLight(0x444444));
+        scene.add(new THREE.AmbientLight(0x444444)); // 基礎となる暗い明かり
 
         // --- 5. アニメーションと衝突判定 ---
         const keys = { W: false, A: false, S: false, D: false };
@@ -166,12 +174,15 @@
                     direction.normalize();
                     
                     // 衝突判定：プレイヤーの現在位置から移動方向にレイを飛ばす
-                    raycaster.set(playerPos, direction);
+                    // 狭い場所を通れるように、判定高さを調整
+                    const checkOrigin = playerPos.clone();
+                    checkOrigin.y = 1.0; 
+                    raycaster.set(checkOrigin, direction);
                     const intersections = raycaster.intersectObjects(walls);
                     
-                    // 壁との距離が一定以下なら移動を制限
+                    // 壁との判定距離を少し短く (1.0 -> 0.8) して狭い通路を通りやすく
                     let canMove = true;
-                    if (intersections.length > 0 && intersections[0].distance < 1.0) {
+                    if (intersections.length > 0 && intersections[0].distance < 0.8) {
                         canMove = false;
                     }
 
@@ -181,8 +192,8 @@
                     }
                 }
                 
-                // y座標（高さ）がズレないように強制固定（埋まり防止）
-                playerPos.y = 1.7;
+                // y座標（高さ）を強制固定（埋まり防止）
+                playerPos.y = 1.6;
             }
             renderer.render(scene, camera);
         }
