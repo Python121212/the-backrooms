@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js Backrooms Maze</title>
+    <title>Three.js Backrooms Open Space</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -23,8 +23,7 @@
     <div id="instructions">
         <span style="font-size:36px">Click to Play</span>
         <br /><br />
-        Move: WASD<br/>
-        Look: MOUSE
+        Move: WASD | Look: MOUSE
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -32,160 +31,100 @@
 
     <script>
         // --- 設定 ---
-        const mapSize = 31; // 迷路のサイズ（奇数であること）
-        const cellSize = 4; // 1マスの大きさ（メートル）
-        const wallHeight = 3;
-        const playerSpeed = 5.0; // 秒速（メートル）
+        const mapSize = 50;     // 空間の広さ（大きくするとより広大に）
+        const cellSize = 5;     // 1マスのサイズ（少し大きくして開放感を出す）
+        const wallHeight = 3.5; // 天井を少し高く設定
+        const playerSpeed = 6.0;
+        const wallProbability = 0.12; // 壁ができる確率 (0.12 = 12%)
 
         // --- 1. 基本セットアップ ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x887744, 0.15); // 黄ばんだ霧
+        // 霧（Fog）の色を少し不気味な黄土色に
+        scene.fog = new THREE.FogExp2(0x998855, 0.12);
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.y = 1.6; // 目の高さ
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 150);
+        camera.position.y = 1.7;
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        // --- 2. マウス操作（PointerLockControls） ---
+        // --- 2. マウス操作 ---
         const controls = new THREE.PointerLockControls(camera, document.body);
         const instructions = document.getElementById('instructions');
-
-        instructions.addEventListener('click', () => {
-            controls.lock();
-        });
-
-        controls.addEventListener('lock', () => {
-            instructions.style.display = 'none';
-        });
-
-        controls.addEventListener('unlock', () => {
-            instructions.style.display = 'flex';
-        });
-
+        instructions.addEventListener('click', () => controls.lock());
+        controls.addEventListener('lock', () => instructions.style.display = 'none');
+        controls.addEventListener('unlock', () => instructions.style.display = 'flex');
         scene.add(controls.getObject());
 
-        // --- 3. 迷路生成（穴掘り法） ---
-        // 0: 通路, 1: 壁
-        let mazeData = [];
-        function generateMaze(size) {
-            // 初期化：すべて壁
-            for (let y = 0; y < size; y++) {
-                mazeData[y] = [];
-                for (let x = 0; x < size; x++) {
-                    mazeData[y][x] = 1;
-                }
-            }
-
-            function dig(x, y) {
-                mazeData[y][x] = 0; // 現在地を掘る
-
-                // 掘り進める方向をランダムにシャッフル
-                const dirs = [[0, -2], [0, 2], [-2, 0], [2, 0]].sort(() => Math.random() - 0.5);
-
-                for (let i = 0; i < dirs.length; i++) {
-                    const nx = x + dirs[i][0];
-                    const ny = y + dirs[i][1];
-
-                    // 範囲内かつ、まだ壁の場合
-                    if (nx > 0 && nx < size - 1 && ny > 0 && ny < size - 1 && mazeData[ny][nx] === 1) {
-                        mazeData[y + dirs[i][1] / 2][x + dirs[i][0] / 2] = 0; // 間の壁を崩す
-                        dig(nx, ny); // 次の場所へ
-                    }
-                }
-            }
-
-            // スタート地点（奇数座標）
-            const startX = 1;
-            const startY = 1;
-            dig(startX, startY);
-
-            // プレイヤーをスタート地点に配置
-            camera.position.x = startX * cellSize;
-            camera.position.z = startY * cellSize;
-        }
-
-        generateMaze(mapSize);
-
-        // --- 4. マテリアル（テクスチャ生成） ---
-        // 外部画像を使わず、プログラムで Backrooms 風のテクスチャを作成
+        // --- 3. マテリアル生成 ---
         function createBackroomsTexture(color, noiseOp) {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 256;
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = color;
             ctx.fillRect(0, 0, 256, 256);
-            
-            // 簡易的なノイズ/汚れを追加
             const imageData = ctx.getImageData(0, 0, 256, 256);
             const data = imageData.data;
             for(let i=0; i<data.length; i+=4) {
                 const noise = Math.random() * noiseOp;
-                data[i] -= noise; data[i+1] -= noise; data[i+2] -= noise; // RGBを暗く
+                data[i] -= noise; data[i+1] -= noise; data[i+2] -= noise;
             }
             ctx.putImageData(imageData, 0, 0);
-
             const texture = new THREE.CanvasTexture(canvas);
-            texture.wrapS = THREE.RepeatWrapping;
-            texture.wrapT = THREE.RepeatWrapping;
+            texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
             return texture;
         }
 
-        // 壁：汚れた黄色い壁紙
-        const wallTex = createBackroomsTexture('#e3d891', 30);
-        wallTex.repeat.set(1, 1);
+        const wallTex = createBackroomsTexture('#d9ca77', 25);
         const wallMaterial = new THREE.MeshLambertMaterial({ map: wallTex });
-
-        // 床：茶色いカーペット
-        const floorTex = createBackroomsTexture('#8c7a51', 40);
-        floorTex.repeat.set(50, 50); // 床全体にリピート
+        const floorTex = createBackroomsTexture('#7d6b41', 35);
+        floorTex.repeat.set(100, 100);
         const floorMaterial = new THREE.MeshLambertMaterial({ map: floorTex });
-
-        // 天井：オフィス天井パネル
         const ceilingTex = createBackroomsTexture('#ffffff', 10);
-        ceilingTex.repeat.set(50, 50);
+        ceilingTex.repeat.set(100, 100);
         const ceilingMaterial = new THREE.MeshLambertMaterial({ map: ceilingTex });
 
-        // --- 5. 迷路の3Dオブジェクト構築 ---
-        const halfSize = (mapSize * cellSize) / 2;
-        const totalSize = mapSize * cellSize;
+        // --- 4. 空間生成ロジック ---
+        const walls = [];
+        const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
+        const totalWorldSize = mapSize * cellSize;
 
-        // 床と天井
-        const floorGeo = new THREE.PlaneGeometry(totalSize, totalSize);
+        // 床と天井を配置
+        const floorGeo = new THREE.PlaneGeometry(totalWorldSize, totalWorldSize);
         const floor = new THREE.Mesh(floorGeo, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
-        floor.position.set(halfSize - cellSize/2, 0, halfSize - cellSize/2);
+        floor.position.set(totalWorldSize/2, 0, totalWorldSize/2);
         scene.add(floor);
 
         const ceiling = new THREE.Mesh(floorGeo, ceilingMaterial);
         ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.set(halfSize - cellSize/2, wallHeight, halfSize - cellSize/2);
+        ceiling.position.set(totalWorldSize/2, wallHeight, totalWorldSize/2);
         scene.add(ceiling);
 
-        // 壁の配置
-        const walls = []; // 衝突判定用配列
-        const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
-
+        // 確率ベースで壁と照明を配置
         for (let y = 0; y < mapSize; y++) {
             for (let x = 0; x < mapSize; x++) {
-                if (mazeData[y][x] === 1) {
+                // 外周の壁
+                const isEdge = (x === 0 || x === mapSize - 1 || y === 0 || y === mapSize - 1);
+                
+                // スタート地点（中央）付近は壁を作らない
+                const isStartArea = (Math.abs(x - mapSize/2) < 2 && Math.abs(y - mapSize/2) < 2);
+
+                if (isEdge || (Math.random() < wallProbability && !isStartArea)) {
                     const wall = new THREE.Mesh(wallGeometry, wallMaterial);
                     wall.position.set(x * cellSize, wallHeight / 2, y * cellSize);
                     scene.add(wall);
-                    walls.push(wall); // 衝突リストに追加
+                    walls.push(wall);
                 } else {
-                    // 通路には天井に光を追加（蛍光灯風）
-                    if (Math.random() < 0.1) { // 10%の確率で蛍光灯
-                        const light = new THREE.PointLight(0xffffcc, 0.8, cellSize * 2.5);
+                    // 通路に稀に蛍光灯を設置
+                    if (Math.random() < 0.08) {
+                        const light = new THREE.PointLight(0xffffcc, 0.7, cellSize * 4);
                         light.position.set(x * cellSize, wallHeight - 0.2, y * cellSize);
                         scene.add(light);
                         
-                        // 蛍光灯の見た目
-                        const lampGeo = new THREE.BoxGeometry(1.5, 0.1, 0.3);
-                        const lampMat = new THREE.MeshBasicMaterial({ color: 0xffffcc });
-                        const lamp = new THREE.Mesh(lampGeo, lampMat);
+                        const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.05, 0.4), new THREE.MeshBasicMaterial({color: 0xffffcc}));
                         lamp.position.copy(light.position);
                         scene.add(lamp);
                     }
@@ -193,89 +132,62 @@
             }
         }
 
-        // 環境光（全体を少し明るく）
-        scene.add(new THREE.AmbientLight(0x444433));
+        // プレイヤーを中央に配置
+        controls.getObject().position.set(mapSize/2 * cellSize, 0, mapSize/2 * cellSize);
+        scene.add(new THREE.AmbientLight(0x333333)); // 基礎となる暗い明かり
 
-        // --- 6. 移動ループと簡易衝突判定 ---
+        // --- 5. 移動と衝突判定 ---
         const keys = { W: false, A: false, S: false, D: false };
-        document.addEventListener('keydown', (e) => { keys[e.key.toUpperCase()] = true; });
-        document.addEventListener('keyup', (e) => { keys[e.key.toUpperCase()] = false; });
+        document.addEventListener('keydown', (e) => keys[e.key.toUpperCase()] = true);
+        document.addEventListener('keyup', (e) => keys[e.key.toUpperCase()] = false);
 
-        // レイキャスター（衝突検知用）
-        const raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, 0, -1), 0, 1.0);
-        
+        const raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(), 0, 1.2);
         const clock = new THREE.Clock();
 
         function animate() {
             requestAnimationFrame(animate);
 
-            if (controls.isLocked === true) {
-                const delta = clock.getDelta(); // 前のフレームからの経過時間
+            if (controls.isLocked) {
+                const delta = clock.getDelta();
                 const moveDist = playerSpeed * delta;
-
-                // 移動ベクトル（カメラの向き基準）
                 const direction = new THREE.Vector3();
                 const front = new THREE.Vector3();
                 const side = new THREE.Vector3();
 
-                // 前後
-                if (keys.W || keys.S) {
-                    camera.getWorldDirection(front);
-                    front.y = 0; front.normalize(); // 横方向の移動のみに限定
-                    if (keys.W) direction.add(front);
-                    if (keys.S) direction.sub(front);
-                }
-                // 左右
-                if (keys.A || keys.D) {
-                    camera.getWorldDirection(front); // sideベクトルを求めるため一時的に取得
-                    side.crossVectors(front, camera.up); // 外積で横方向を求める
-                    side.y = 0; side.normalize();
-                    if (keys.A) direction.sub(side);
-                    if (keys.D) direction.add(side);
-                }
+                camera.getWorldDirection(front);
+                front.y = 0; front.normalize();
+                side.crossVectors(front, camera.up).normalize();
+
+                if (keys.W) direction.add(front);
+                if (keys.S) direction.sub(front);
+                if (keys.A) direction.sub(side);
+                if (keys.D) direction.add(side);
 
                 if (direction.length() > 0) {
                     direction.normalize();
-
-                    // --- 簡易衝突判定 ---
-                    // 移動方向の足元と頭付近からレイ（光線）を飛ばし、壁に当たるかチェック
+                    
+                    // 衝突判定
                     let collision = false;
+                    const checkOrigin = controls.getObject().position.clone();
+                    checkOrigin.y = 1.0; 
+                    raycaster.set(checkOrigin, direction);
                     
-                    // チェックする高さ（足元と目の高さ）
-                    const checkHeights = [0.5, 1.6];
-                    
-                    for (let h of checkHeights) {
-                        const rayOrigin = controls.getObject().position.clone();
-                        rayOrigin.y = h; // レイの高さを設定
-
-                        raycaster.set(rayOrigin, direction);
-                        
-                        // walls配列のオブジェクトとの交差を判定
-                        const intersections = raycaster.intersectObjects(walls);
-
-                        if (intersections.length > 0) {
-                            // 当たった距離が cellSize/2 (プレイヤーの半径相当) 以下の時、移動不可
-                            if(intersections[0].distance < cellSize/2.5) {
-                                collision = true;
-                                break;
-                            }
-                        }
+                    const hits = raycaster.intersectObjects(walls);
+                    if (hits.length > 0 && hits[0].distance < 1.0) {
+                        collision = true;
                     }
 
-                    // 衝突していなければ移動
                     if (!collision) {
                         controls.moveRight(direction.dot(side) * moveDist);
                         controls.moveForward(direction.dot(front) * moveDist);
                     }
                 }
             }
-
             renderer.render(scene, camera);
         }
 
         animate();
 
-        // リサイズ対応
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
