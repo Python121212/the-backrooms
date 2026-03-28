@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Three.js Backrooms Balanced</title>
+    <title>Three.js Backrooms Flickering Lights</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #000; }
         canvas { display: block; }
@@ -35,14 +35,14 @@
         const cellSize = 5;     
         const wallHeight = 3.2; 
         const playerSpeed = 5.0; 
-        const wallProbability = 0.20; // 20%に下げて通り道を確保
+        const wallProbability = 0.22; // 壁の密度バランス
         const lightProbability = 0.15; 
 
         // --- 1. 基本セットアップ ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x887744, 0.1); 
 
-        // Nearを0.01にして至近距離の消失を防ぐ
+        // Nearを小さくして壁の消失を防止
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.01, 200);
         
         const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -58,12 +58,11 @@
         controls.addEventListener('unlock', () => instructions.style.display = 'flex');
         scene.add(controls.getObject());
 
-        // 中央をスタート地点に
         const startX = Math.floor(mapSize / 2);
         const startZ = Math.floor(mapSize / 2);
         controls.getObject().position.set(startX * cellSize, 1.6, startZ * cellSize);
 
-        // --- 3. マテリアル生成 ---
+        // --- 3. マテリアル ---
         function createBackroomsTexture(color, noiseOp) {
             const canvas = document.createElement('canvas');
             canvas.width = 256; canvas.height = 256;
@@ -83,10 +82,7 @@
         }
 
         const wallTex = createBackroomsTexture('#ddd088', 20);
-        const wallMaterial = new THREE.MeshLambertMaterial({ 
-            map: wallTex,
-            side: THREE.DoubleSide // 内側からも見えるように
-        });
+        const wallMaterial = new THREE.MeshLambertMaterial({ map: wallTex, side: THREE.DoubleSide });
         const floorTex = createBackroomsTexture('#7d6b41', 35);
         floorTex.repeat.set(mapSize, mapSize);
         const floorMaterial = new THREE.MeshLambertMaterial({ map: floorTex });
@@ -96,10 +92,11 @@
 
         // --- 4. 構築 ---
         const walls = [];
+        const flickeringLights = []; // ちらつき用ライト配列
         const wallGeometry = new THREE.BoxGeometry(cellSize, wallHeight, cellSize);
         const totalWorldSize = mapSize * cellSize;
 
-        // 床と天井
+        // 床・天井
         const floorGeo = new THREE.PlaneGeometry(totalWorldSize, totalWorldSize);
         const floor = new THREE.Mesh(floorGeo, floorMaterial);
         floor.rotation.x = -Math.PI / 2;
@@ -111,11 +108,10 @@
         ceiling.position.set(totalWorldSize/2 - cellSize/2, wallHeight, totalWorldSize/2 - cellSize/2);
         scene.add(ceiling);
 
-        // 壁と照明の配置
+        // 配置
         for (let y = 0; y < mapSize; y++) {
             for (let x = 0; x < mapSize; x++) {
                 const isEdge = (x === 0 || x === mapSize - 1 || y === 0 || y === mapSize - 1);
-                // プレイヤー周囲の安全地帯を広めに(半径3マス)
                 const distToStart = Math.max(Math.abs(x - startX), Math.abs(y - startZ));
                 const isStartArea = (distToStart < 4);
 
@@ -130,6 +126,13 @@
                         light.position.set(x * cellSize, wallHeight - 0.2, y * cellSize);
                         scene.add(light);
                         
+                        // ライト情報を保存
+                        flickeringLights.push({
+                            light: light,
+                            baseIntensity: 0.5,
+                            flickerTimer: 0
+                        });
+                        
                         const lamp = new THREE.Mesh(
                             new THREE.BoxGeometry(2.0, 0.05, 0.6), 
                             new THREE.MeshBasicMaterial({color: 0xffffee})
@@ -143,7 +146,7 @@
 
         scene.add(new THREE.AmbientLight(0x222222));
 
-        // --- 5. アニメーションと衝突判定 ---
+        // --- 5. アニメーション ---
         const keys = { W: false, A: false, S: false, D: false };
         document.addEventListener('keydown', (e) => keys[e.key.toUpperCase()] = true);
         document.addEventListener('keyup', (e) => keys[e.key.toUpperCase()] = false);
@@ -156,8 +159,26 @@
 
             if (controls.isLocked) {
                 const delta = clock.getDelta();
+                const time = clock.getElapsedTime();
+
+                // 1. ライトのちらつき処理
+                flickeringLights.forEach(item => {
+                    // 非常に低い確率で大きなちらつきを発生させる
+                    if (Math.random() > 0.98) {
+                        item.light.intensity = Math.random() * item.baseIntensity;
+                    } else {
+                        // 通常時は微妙に震える
+                        item.light.intensity = item.baseIntensity + (Math.sin(time * 50) * 0.05);
+                    }
+                    
+                    // たまに完全に消える（一瞬だけ）
+                    if (Math.random() > 0.998) {
+                        item.light.intensity = 0;
+                    }
+                });
+
+                // 2. 移動処理
                 const moveDist = playerSpeed * delta;
-                
                 const playerPos = controls.getObject().position;
                 const direction = new THREE.Vector3();
                 const front = new THREE.Vector3();
@@ -174,19 +195,12 @@
 
                 if (direction.length() > 0) {
                     direction.normalize();
-                    
                     const checkOrigin = playerPos.clone();
                     checkOrigin.y = 1.0; 
                     raycaster.set(checkOrigin, direction);
                     const intersections = raycaster.intersectObjects(walls);
                     
-                    // 当たり判定の距離を調整
-                    let canMove = true;
-                    if (intersections.length > 0 && intersections[0].distance < 0.6) {
-                        canMove = false;
-                    }
-
-                    if (canMove) {
+                    if (!(intersections.length > 0 && intersections[0].distance < 0.6)) {
                         controls.moveRight(direction.dot(side) * moveDist);
                         controls.moveForward(direction.dot(front) * moveDist);
                     }
